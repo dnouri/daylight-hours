@@ -335,6 +335,31 @@ body {
     border: 1px solid rgba(244, 67, 54, 0.3);
 }
 
+.solar-noon-section {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.solar-noon-section .stat-item {
+    margin-bottom: 12px;
+}
+
+.stat-altitude {
+    margin-left: 8px;
+    color: rgba(255, 200, 0, 0.9);
+    font-weight: 500;
+}
+
+.sun-path-viz {
+    margin-top: 12px;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+}
+
 .stat-forecast {
     margin-top: 20px;
     padding-top: 20px;
@@ -401,7 +426,7 @@ body {
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
 }
-.gradient-container {
+.altitude-container {
     position: relative;
     background: rgba(255, 255, 255, 0.05);
     border-radius: 16px;
@@ -428,19 +453,19 @@ body {
     pointer-events: none;
     transition: none;
 }
-#gradient-chart {
+#altitude-chart {
     display: block;
     width: 100%;
     height: auto;
 }
-.gradient-axis .tick line {
+.altitude-axis .tick line {
     stroke: rgba(255, 255, 255, 0.1);
 }
-.gradient-axis .tick text {
+.altitude-axis .tick text {
     fill: rgba(255, 255, 255, 0.5);
     font-size: 10px;
 }
-.gradient-axis .domain {
+.altitude-axis .domain {
     stroke: rgba(255, 255, 255, 0.2);
 }
 

@@ -52,6 +52,16 @@
                     <span class="stat-value" id="daylight-hours">-</span>
                     <span class="stat-change" id="daylight-change">-</span>
                 </div>
+                <div class="solar-noon-section">
+                    <div class="stat-item">
+                        <span class="stat-label">Solar Noon</span>
+                        <span class="stat-value" id="solar-noon-time">-</span>
+                        <span class="stat-altitude" id="solar-noon-altitude">-</span>
+                    </div>
+                    <div class="sun-path-viz" id="sun-path-viz">
+                        <svg id="sun-path-mini" width="200" height="80"></svg>
+                    </div>
+                </div>
                 <div class="stat-forecast">
                     <span class="forecast-label">30-Day Outlook</span>
                     <div class="forecast-value" id="monthly-forecast">
@@ -67,8 +77,8 @@
                     <div class="chart-loading">Loading...</div>
                 </div>
                 
-                <div class="gradient-container" id="gradient-container">
-                    <svg id="gradient-chart"></svg>
+                <div class="altitude-container" id="altitude-container">
+                    <svg id="altitude-chart"></svg>
                 </div>
             </div>
         </main>

@@ -90,6 +90,20 @@ const App = {
             const sunrise = times.sunrise;
             const sunset = times.sunset;
             
+            // Calculate solar noon and maximum altitude
+            const solarNoon = times.solarNoon;
+            const noonPos = SunCalc.getPosition(solarNoon, lat, lng);
+            const maxAltitude = noonPos.altitude * 180 / Math.PI; // Convert to degrees
+            
+            // Calculate sun positions at different times
+            const morning9 = new Date(date);
+            morning9.setHours(9, 0, 0, 0);
+            const morning9Pos = SunCalc.getPosition(morning9, lat, lng);
+            
+            const afternoon3 = new Date(date);
+            afternoon3.setHours(15, 0, 0, 0);
+            const afternoon3Pos = SunCalc.getPosition(afternoon3, lat, lng);
+            
             // Handle polar day/night
             let daylightHours;
             if (!sunrise || !sunset || isNaN(sunrise) || isNaN(sunset)) {
@@ -108,7 +122,11 @@ const App = {
                     sunset: null,
                     daylight: daylightHours,
                     isPolarExtreme: true,
-                    isToday: this.isSameDay(date, today)
+                    isToday: this.isSameDay(date, today),
+                    solarNoon: solarNoon,
+                    maxAltitude: maxAltitude,
+                    altitude9am: morning9Pos.altitude * 180 / Math.PI,
+                    altitude3pm: afternoon3Pos.altitude * 180 / Math.PI
                 });
             } else {
                 daylightHours = (sunset - sunrise) / (1000 * 60 * 60);
@@ -118,7 +136,11 @@ const App = {
                     sunset: sunset,
                     daylight: Math.max(0, Math.min(24, daylightHours)), // Clamp between 0-24
                     isPolarExtreme: false,
-                    isToday: this.isSameDay(date, today)
+                    isToday: this.isSameDay(date, today),
+                    solarNoon: solarNoon,
+                    maxAltitude: maxAltitude,
+                    altitude9am: morning9Pos.altitude * 180 / Math.PI,
+                    altitude3pm: afternoon3Pos.altitude * 180 / Math.PI
                 });
             }
         }
@@ -180,6 +202,189 @@ const App = {
         return `${h}h ${m}m`;
     },
     
+    renderSunPath(today, timezoneOffset, location) {
+        const svg = d3.select('#sun-path-mini');
+        svg.selectAll('*').remove();
+        
+        const width = 200;
+        const height = 80;  // Increased height for time labels
+        const margin = { top: 10, right: 15, bottom: 15, left: 15 };
+        const chartWidth = width - margin.left - margin.right;
+        const chartHeight = height - margin.top - margin.bottom;
+        
+        const g = svg.append('g')
+            .attr('transform', `translate(${margin.left},${margin.top})`);
+        
+        if (today.isPolarExtreme) {
+            // For polar day/night, show a simple message
+            g.append('text')
+                .attr('x', chartWidth / 2)
+                .attr('y', chartHeight / 2)
+                .attr('text-anchor', 'middle')
+                .attr('font-size', '12px')
+                .attr('fill', 'rgba(255, 255, 255, 0.7)')
+                .text(today.daylight === 24 ? 'Polar Day - Sun never sets' : 'Polar Night - Sun never rises');
+            return;
+        }
+        
+        const centerX = chartWidth / 2;
+        const centerY = chartHeight - 10;  // Leave room for time labels
+        
+        // Draw horizon line
+        g.append('line')
+            .attr('x1', 0)
+            .attr('x2', chartWidth)
+            .attr('y1', centerY)
+            .attr('y2', centerY)
+            .attr('stroke', 'rgba(255, 255, 255, 0.3)')
+            .attr('stroke-width', 1);
+        
+        // Calculate key times
+        const sunrise = new Date(today.sunrise);
+        const sunset = new Date(today.sunset);
+        const dayDuration = sunset - sunrise;
+        const now = new Date();
+        
+        // Function to get position on arc (0 = sunrise, 1 = sunset)
+        const getArcPosition = (time) => {
+            const progress = (time - sunrise) / dayDuration;
+            return Math.max(0, Math.min(1, progress));
+        };
+        
+        // Function to calculate sun altitude at any time
+        const getSunAltitude = (time) => {
+            const pos = SunCalc.getPosition(time, location.lat, location.lng);
+            return Math.max(0, pos.altitude * 180 / Math.PI);
+        };
+        
+        // Draw the elapsed/remaining portions
+        const currentProgress = getArcPosition(now);
+        const isNighttime = now < sunrise || now > sunset;
+        
+        if (!isNighttime && currentProgress >= 0 && currentProgress <= 1) {
+            // Draw elapsed portion (shaded)
+            const elapsedPoints = [];
+            elapsedPoints.push([0, centerY]);  // Start at horizon
+            
+            // Sample points along the elapsed arc
+            for (let i = 0; i <= currentProgress; i += 0.02) {
+                const time = new Date(sunrise.getTime() + i * dayDuration);
+                const altitude = getSunAltitude(time);
+                const x = i * chartWidth;
+                const y = centerY - (altitude / 90) * (chartHeight - 20);
+                elapsedPoints.push([x, y]);
+            }
+            
+            elapsedPoints.push([currentProgress * chartWidth, centerY]);  // Back to horizon
+            
+            // Draw filled area for elapsed time
+            const line = d3.line().curve(d3.curveNatural);
+            g.append('path')
+                .attr('d', line(elapsedPoints) + ' Z')
+                .attr('fill', 'rgba(255, 200, 0, 0.15)')
+                .attr('stroke', 'none');
+        }
+        
+        // Draw the full sun path arc
+        const pathPoints = [];
+        for (let i = 0; i <= 1; i += 0.02) {
+            const time = new Date(sunrise.getTime() + i * dayDuration);
+            const altitude = getSunAltitude(time);
+            const x = i * chartWidth;
+            const y = centerY - (altitude / 90) * (chartHeight - 20);
+            pathPoints.push([x, y]);
+        }
+        
+        const line = d3.line().curve(d3.curveNatural);
+        g.append('path')
+            .attr('d', line(pathPoints))
+            .attr('fill', 'none')
+            .attr('stroke', 'rgba(255, 200, 0, 0.6)')
+            .attr('stroke-width', 2);
+        
+        // Add hour markers
+        const hourMarkers = [9, 12, 15];  // 9am, noon, 3pm
+        hourMarkers.forEach(hour => {
+            const markerTime = new Date(today.date);
+            markerTime.setHours(hour, 0, 0, 0);
+            
+            if (markerTime >= sunrise && markerTime <= sunset) {
+                const progress = getArcPosition(markerTime);
+                const altitude = getSunAltitude(markerTime);
+                const x = progress * chartWidth;
+                const y = centerY - (altitude / 90) * (chartHeight - 20);
+                
+                // Hour tick mark
+                g.append('line')
+                    .attr('x1', x)
+                    .attr('x2', x)
+                    .attr('y1', y - 3)
+                    .attr('y2', y + 3)
+                    .attr('stroke', 'rgba(255, 255, 255, 0.4)')
+                    .attr('stroke-width', 1);
+                
+                // Hour label
+                g.append('text')
+                    .attr('x', x)
+                    .attr('y', y - 6)
+                    .attr('text-anchor', 'middle')
+                    .attr('font-size', '8px')
+                    .attr('fill', 'rgba(255, 255, 255, 0.5)')
+                    .text(hour === 12 ? 'noon' : `${hour > 12 ? hour - 12 : hour}${hour >= 12 ? 'pm' : 'am'}`);
+            }
+        });
+        
+        // Add sunrise/sunset markers and times
+        g.append('circle')
+            .attr('cx', 0)
+            .attr('cy', centerY)
+            .attr('r', 3)
+            .attr('fill', '#FF9800');
+        
+        g.append('text')
+            .attr('x', 0)
+            .attr('y', centerY + 10)
+            .attr('text-anchor', 'start')
+            .attr('font-size', '8px')
+            .attr('fill', 'rgba(255, 255, 255, 0.6)')
+            .text(this.formatTime(sunrise, timezoneOffset));
+        
+        g.append('circle')
+            .attr('cx', chartWidth)
+            .attr('cy', centerY)
+            .attr('r', 3)
+            .attr('fill', '#FF5722');
+        
+        g.append('text')
+            .attr('x', chartWidth)
+            .attr('y', centerY + 10)
+            .attr('text-anchor', 'end')
+            .attr('font-size', '8px')
+            .attr('fill', 'rgba(255, 255, 255, 0.6)')
+            .text(this.formatTime(sunset, timezoneOffset));
+        
+        // Add current sun position if daytime
+        if (!isNighttime && currentProgress >= 0 && currentProgress <= 1) {
+            const currentAltitude = getSunAltitude(now);
+            const currentX = currentProgress * chartWidth;
+            const currentY = centerY - (currentAltitude / 90) * (chartHeight - 20);
+            
+            // Glowing current position
+            g.append('circle')
+                .attr('cx', currentX)
+                .attr('cy', currentY)
+                .attr('r', 5)
+                .attr('fill', '#FFD700')
+                .attr('opacity', 0.3);
+            
+            g.append('circle')
+                .attr('cx', currentX)
+                .attr('cy', currentY)
+                .attr('r', 3)
+                .attr('fill', '#FFD700');
+        }
+    },
+    
     updateTodayStats(data, location) {
         const today = data.find(d => d.isToday);
         if (today) {
@@ -215,6 +420,17 @@ const App = {
             const changeEl = document.getElementById('daylight-change');
             changeEl.textContent = `${changeText} min/day`;
             changeEl.className = `stat-change ${changeClass}`;
+            
+            // Update solar noon information
+            const solarNoonEl = document.getElementById('solar-noon-time');
+            const solarAltitudeEl = document.getElementById('solar-noon-altitude');
+            if (solarNoonEl && solarAltitudeEl) {
+                solarNoonEl.textContent = this.formatTime(today.solarNoon, timezoneOffset);
+                solarAltitudeEl.textContent = `(${today.maxAltitude.toFixed(1)}°)`;
+            }
+            
+            // Render sun path visualization
+            this.renderSunPath(today, timezoneOffset, location);
             
             // Calculate and update 30-day forecast
             const todayIndex = data.findIndex(d => d.isToday);
@@ -494,8 +710,8 @@ const App = {
         // Hide loading indicator
         document.querySelector('.chart-loading').style.display = 'none';
         
-        // Render gradient chart
-        this.renderGradientChart(datasets, x, margin, width);
+        // Render altitude chart
+        this.renderAltitudeChart(datasets, x, margin, width);
     },
     
     addInteractiveOverlay(g, datasets, xScale, yScale, width, height) {
@@ -683,6 +899,16 @@ const App = {
                             </div>`;
                     }
                     
+                    // Add solar noon and altitude information
+                    const offset = item.location.timezoneOffset || 0;
+                    tooltipContent += `
+                            <div class="tooltip-info">
+                                ☀️ Solar noon: ${this.formatTime(item.data.solarNoon, offset)} at ${item.data.maxAltitude.toFixed(1)}°
+                            </div>
+                            <div class="tooltip-info">
+                                🌤️ 9am: ${item.data.altitude9am.toFixed(1)}° · 3pm: ${item.data.altitude3pm.toFixed(1)}°
+                            </div>`;
+                    
                     tooltipContent += `
                             <div class="tooltip-stats">
                                 <span>${this.formatDuration(item.data.daylight)}</span>
@@ -788,20 +1014,20 @@ const App = {
         }
     },
     
-    renderGradientChart(datasets, xScale, parentMargin, parentWidth) {
-        const container = document.getElementById('gradient-container');
+    renderAltitudeChart(datasets, xScale, parentMargin, parentWidth) {
+        const container = document.getElementById('altitude-container');
         if (!container) {
-            console.error('Gradient container not found');
+            console.error('Altitude container not found');
             return;
         }
         
-        const svg = d3.select('#gradient-chart');
+        const svg = d3.select('#altitude-chart');
         
         if (!datasets || datasets.length === 0) return;
         
         // Check if container has width
         if (container.clientWidth === 0) {
-            console.warn('Gradient container has no width');
+            console.warn('Altitude container has no width');
             return;
         }
         
@@ -811,7 +1037,7 @@ const App = {
         // Use same margins as parent chart for alignment
         const margin = { top: 25, right: parentMargin.right, bottom: 30, left: parentMargin.left };
         const width = parentWidth;
-        const chartHeight = 120; // Increased height for better visibility
+        const chartHeight = 160; // Good height for altitude visualization
         
         svg.attr('width', width + margin.left + margin.right)
            .attr('height', chartHeight + margin.top + margin.bottom);
@@ -822,63 +1048,84 @@ const App = {
         // Get all data points for scale calculation
         const allData = datasets.flatMap(d => d.data);
         
-        // Find min and max change rates
-        const changeExtent = d3.extent(allData, d => d.change || 0);
-        const maxAbsChange = Math.max(Math.abs(changeExtent[0]), Math.abs(changeExtent[1]));
-        
-        // Y scale for change rate (centered at 0)
+        // Y scale for altitude (0 to max altitude + padding)
+        const maxAltitude = Math.max(...allData.map(d => d.maxAltitude));
         const y = d3.scaleLinear()
-            .domain([-maxAbsChange, maxAbsChange])
+            .domain([0, Math.min(90, maxAltitude + 5)]) // Cap at 90 degrees
             .range([chartHeight, 0]);
         
-        // Line generator for gradient
+        // Line generator for altitude
         const line = d3.line()
             .x(d => xScale(d.date))
-            .y(d => y(d.change || 0))
+            .y(d => y(d.maxAltitude))
             .curve(d3.curveMonotoneX);
         
-        // Add zero line
-        g.append('line')
-            .attr('class', 'zero-line')
-            .attr('x1', 0)
-            .attr('x2', width)
-            .attr('y1', y(0))
-            .attr('y2', y(0))
-            .attr('stroke', 'rgba(255, 255, 255, 0.2)')
-            .attr('stroke-dasharray', '3,3');
+        // Add background zones for altitude ranges
+        const zones = [
+            { min: 0, max: 20, color: 'rgba(100, 100, 255, 0.1)', label: 'Low sun' },
+            { min: 20, max: 45, color: 'rgba(150, 150, 255, 0.1)', label: 'Moderate' },
+            { min: 45, max: 70, color: 'rgba(200, 200, 255, 0.1)', label: 'High sun' },
+            { min: 70, max: 90, color: 'rgba(255, 255, 255, 0.1)', label: 'Overhead' }
+        ];
         
-        // Draw gradient lines for each location
+        zones.forEach(zone => {
+            if (zone.min < y.domain()[1]) {
+                g.append('rect')
+                    .attr('x', 0)
+                    .attr('y', y(Math.min(zone.max, y.domain()[1])))
+                    .attr('width', width)
+                    .attr('height', y(zone.min) - y(Math.min(zone.max, y.domain()[1])))
+                    .attr('fill', zone.color);
+            }
+        });
+        
+        // Draw altitude lines for each location
         datasets.forEach((dataset, index) => {
             const color = this.locationColors[dataset.location.colorIndex || 0];
             
             g.append('path')
                 .datum(dataset.data)
-                .attr('class', 'gradient-line')
+                .attr('class', 'altitude-line')
                 .attr('fill', 'none')
                 .attr('stroke', color)
-                .attr('stroke-width', dataset.location.isPrimary ? 2 : 1.5)
-                .attr('opacity', dataset.location.isPrimary ? 1 : 0.6)
+                .attr('stroke-width', dataset.location.isPrimary ? 2.5 : 2)
+                .attr('opacity', dataset.location.isPrimary ? 1 : 0.7)
                 .attr('d', line);
         });
         
+        // Find today's data for the today line
+        const todayData = allData.find(d => d.isToday);
+        if (todayData) {
+            g.append('line')
+                .attr('class', 'today-line-altitude')
+                .attr('x1', xScale(todayData.date))
+                .attr('x2', xScale(todayData.date))
+                .attr('y1', 0)
+                .attr('y2', chartHeight)
+                .attr('stroke', '#00BCD4')
+                .attr('stroke-width', 2)
+                .attr('stroke-dasharray', '5,5')
+                .attr('opacity', 0.8);
+        }
+        
         // Add Y axis
         const yAxis = d3.axisLeft(y)
-            .tickFormat(d => `${d > 0 ? '+' : ''}${d}`)
-            .ticks(5)
+            .tickFormat(d => `${d}°`)
+            .ticks(6)
             .tickSize(-width);
         
         g.append('g')
-            .attr('class', 'y-axis gradient-axis')
+            .attr('class', 'y-axis altitude-axis')
             .call(yAxis);
         
         // Add label
         g.append('text')
-            .attr('class', 'gradient-label')
+            .attr('class', 'altitude-label')
             .attr('x', 0)
             .attr('y', -10)
             .attr('font-size', '12px')
             .attr('fill', 'rgba(255, 255, 255, 0.7)')
-            .text('Daily change (min/day)');
+            .text('Solar noon altitude');
     },
     
     calculateAndRenderData() {
@@ -903,9 +1150,9 @@ const App = {
         const svg = d3.select('#daylight-chart');
         svg.selectAll('*').remove();
         
-        // Clear gradient chart too
-        const gradientSvg = d3.select('#gradient-chart');
-        gradientSvg.selectAll('*').remove();
+        // Clear altitude chart too
+        const altitudeSvg = d3.select('#altitude-chart');
+        altitudeSvg.selectAll('*').remove();
         
         // Show a message when no locations
         const container = document.getElementById('chart-container');
