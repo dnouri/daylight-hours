@@ -2,14 +2,28 @@ const App = {
     locations: [],
     locationColors: ['#2196F3', '#4CAF50', '#FF9800'],
     dataCache: new Map(),
+    tooltip: null,
+    currentHoverPoint: null,
+    hideTooltipTimer: null,
     
     init() {
+        this.setupTooltip();
         this.updateDateDisplay();
         this.setupEventListeners();
         this.loadFromURL();
         window.LocationManager.init();
         window.KeyboardManager.init();
         window.ErrorHandler.init();
+    },
+    
+    setupTooltip() {
+        // Create a single reusable tooltip
+        if (!this.tooltip) {
+            this.tooltip = d3.select('body').append('div')
+                .attr('class', 'chart-tooltip')
+                .style('opacity', 0)
+                .style('pointer-events', 'none');
+        }
     },
     
     loadFromURL() {
@@ -475,84 +489,169 @@ const App = {
         }
         
         // Add interactive overlay for touch/mouse events
-        // Remove any existing tooltip first
-        d3.select('.chart-tooltip').remove();
+        this.addInteractiveOverlay(g, datasets, x, y, width, chartHeight);
         
-        const tooltip = d3.select('body').append('div')
-            .attr('class', 'chart-tooltip')
-            .style('opacity', 0);
+        // Hide loading indicator
+        document.querySelector('.chart-loading').style.display = 'none';
         
-        // Create invisible vertical strips for better hover detection
-        const interactionData = primaryDataset.data;
+        // Render gradient chart
+        this.renderGradientChart(datasets, x, margin, width);
+    },
+    
+    addInteractiveOverlay(g, datasets, xScale, yScale, width, height) {
+        const self = this;
         
-        // Calculate width of each strip (distance between data points)
-        const stripWidth = interactionData.length > 1 ? 
-            x(interactionData[1].date) - x(interactionData[0].date) : 10;
-        
-        g.selectAll('.hover-strip')
-            .data(interactionData)
-            .enter().append('rect')
-            .attr('class', 'hover-strip')
-            .attr('x', d => x(d.date) - stripWidth / 2)
-            .attr('y', 0)
-            .attr('width', stripWidth)
-            .attr('height', chartHeight)
+        // Create a single overlay rectangle
+        const overlay = g.append('rect')
+            .attr('class', 'chart-overlay')
+            .attr('width', width)
+            .attr('height', height)
             .attr('fill', 'transparent')
-            .style('cursor', 'crosshair')
-            .on('touchstart mouseover', (event, d) => {
-                const formatDateShort = d3.timeFormat('%b %d');
+            .style('cursor', 'crosshair');
+        
+        // Find the nearest data point to the mouse/touch position
+        const findNearestPoint = (mouseX) => {
+            const primaryDataset = datasets.find(d => d.location.isPrimary) || datasets[0];
+            const data = primaryDataset.data;
+            
+            // Convert pixel position to date
+            const x0 = xScale.invert(mouseX);
+            
+            // Use bisector to find the nearest points
+            const bisect = d3.bisector(d => d.date).left;
+            const i = bisect(data, x0, 1);
+            const d0 = data[i - 1];
+            const d1 = data[i];
+            
+            // Return the closer point
+            if (!d1) return d0;
+            if (!d0) return d1;
+            return x0 - d0.date > d1.date - x0 ? d1 : d0;
+        };
+        
+        // Handle showing the tooltip
+        const handleInteraction = function(event) {
+            const [mouseX, mouseY] = d3.pointer(event, this);
+            
+            // Find nearest data point
+            const nearestPoint = findNearestPoint(mouseX);
+            if (!nearestPoint) return;
+            
+            // Only update if we've moved to a different point
+            if (self.currentHoverPoint === nearestPoint) return;
+            self.currentHoverPoint = nearestPoint;
+            
+            // Clear any pending hide timer
+            if (self.hideTooltipTimer) {
+                clearTimeout(self.hideTooltipTimer);
+                self.hideTooltipTimer = null;
+            }
+            
+            // Update tooltip
+            self.updateTooltip(nearestPoint, datasets, xScale, yScale, g, event);
+        };
+        
+        // Handle hiding the tooltip
+        const handleLeave = function() {
+            // Delay hiding to prevent flicker when moving between elements
+            self.hideTooltipTimer = setTimeout(() => {
+                self.hideTooltip(g);
+            }, 100);
+        };
+        
+        // Mouse events
+        overlay
+            .on('mousemove', handleInteraction)
+            .on('mouseenter', handleInteraction)
+            .on('mouseleave', handleLeave);
+        
+        // Touch events
+        overlay
+            .on('touchstart', function(event) {
+                event.preventDefault();
+                const touch = event.touches[0];
+                const [touchX] = d3.pointer(touch, this);
                 
-                // Get data for this date from all datasets
-                const allLocationData = datasets.map((dataset, idx) => {
-                    const dataPoint = dataset.data.find(point => 
-                        this.isSameDay(point.date, d.date)
-                    );
-                    return {
-                        location: dataset.location,
-                        data: dataPoint,
-                        color: this.locationColors[idx % this.locationColors.length]
-                    };
-                }).filter(item => item.data);
+                const nearestPoint = findNearestPoint(touchX);
+                if (nearestPoint) {
+                    self.currentHoverPoint = nearestPoint;
+                    self.updateTooltip(nearestPoint, datasets, xScale, yScale, g, touch);
+                }
+            })
+            .on('touchmove', function(event) {
+                event.preventDefault();
+                const touch = event.touches[0];
+                const [touchX] = d3.pointer(touch, this);
                 
-                // Calculate monthly change
-                const getMonthlyChange = (data, currentIndex) => {
-                    const futureIndex = Math.min(currentIndex + 30, data.length - 1);
-                    const futureData = data[futureIndex];
-                    const currentData = data[currentIndex];
-                    if (futureData && currentData) {
-                        const totalChange = (futureData.daylight - currentData.daylight) * 60;
-                        const daysAhead = futureIndex - currentIndex;
-                        return { totalChange, daysAhead };
-                    }
-                    return null;
-                };
-                
-                // Add visual feedback dots for all locations at exact points
-                allLocationData.forEach(item => {
-                    // Outer ring
-                    g.append('circle')
-                        .attr('class', 'hover-dot')
-                        .attr('cx', x(item.data.date))
-                        .attr('cy', y(item.data.daylight))
-                        .attr('r', 0)
-                        .attr('fill', 'none')
-                        .attr('stroke', item.color)
-                        .attr('stroke-width', 2)
-                        .transition()
-                        .duration(200)
-                        .attr('r', 10);
-                    
-                    // Inner dot
-                    g.append('circle')
-                        .attr('class', 'hover-dot')
-                        .attr('cx', x(item.data.date))
-                        .attr('cy', y(item.data.daylight))
-                        .attr('r', 3)
-                        .attr('fill', item.color);
-                });
-                
-                // Build tooltip content for all locations
-                let tooltipContent = `<div class="tooltip-date">${formatDateShort(d.date)}</div>`;
+                const nearestPoint = findNearestPoint(touchX);
+                if (nearestPoint && nearestPoint !== self.currentHoverPoint) {
+                    self.currentHoverPoint = nearestPoint;
+                    self.updateTooltip(nearestPoint, datasets, xScale, yScale, g, touch);
+                }
+            })
+            .on('touchend', function(event) {
+                event.preventDefault();
+                // Keep tooltip visible longer on mobile
+                self.hideTooltipTimer = setTimeout(() => {
+                    self.hideTooltip(g);
+                }, 2000);
+            });
+    },
+    
+    updateTooltip(dataPoint, datasets, xScale, yScale, g, event) {
+        // Clear existing hover dots
+        g.selectAll('.hover-dot').remove();
+        
+        const formatDateShort = d3.timeFormat('%b %d');
+        
+        // Get data for this date from all datasets
+        const allLocationData = datasets.map((dataset, idx) => {
+            const point = dataset.data.find(p => 
+                this.isSameDay(p.date, dataPoint.date)
+            );
+            return {
+                location: dataset.location,
+                data: point,
+                color: this.locationColors[idx % this.locationColors.length]
+            };
+        }).filter(item => item.data);
+        
+        // Calculate monthly change
+        const getMonthlyChange = (data, currentIndex) => {
+            const futureIndex = Math.min(currentIndex + 30, data.length - 1);
+            const futureData = data[futureIndex];
+            const currentData = data[currentIndex];
+            if (futureData && currentData) {
+                const totalChange = (futureData.daylight - currentData.daylight) * 60;
+                const daysAhead = futureIndex - currentIndex;
+                return { totalChange, daysAhead };
+            }
+            return null;
+        };
+        
+        // Add visual feedback dots for all locations at exact points
+        allLocationData.forEach(item => {
+            // Add hover indicator dots
+            g.append('circle')
+                .attr('class', 'hover-dot')
+                .attr('cx', xScale(item.data.date))
+                .attr('cy', yScale(item.data.daylight))
+                .attr('r', 10)
+                .attr('fill', 'none')
+                .attr('stroke', item.color)
+                .attr('stroke-width', 2)
+                .attr('opacity', 0.5);
+            
+            g.append('circle')
+                .attr('class', 'hover-dot')
+                .attr('cx', xScale(item.data.date))
+                .attr('cy', yScale(item.data.daylight))
+                .attr('r', 4)
+                .attr('fill', item.color);
+        });
+        
+        // Build tooltip content for all locations
+        let tooltipContent = `<div class="tooltip-date">${formatDateShort(dataPoint.date)}</div>`;
                 
                 allLocationData.forEach(item => {
                     const changeClass = item.data.change > 0 ? 'positive' : 'negative';
@@ -561,7 +660,7 @@ const App = {
                     
                     // Find current index and calculate monthly change
                     const currentIndex = datasets.find(ds => ds.location === item.location)
-                        .data.findIndex(point => this.isSameDay(point.date, d.date));
+                        .data.findIndex(point => this.isSameDay(point.date, dataPoint.date));
                     const monthlyData = getMonthlyChange(
                         datasets.find(ds => ds.location === item.location).data,
                         currentIndex
@@ -604,54 +703,89 @@ const App = {
                     
                     tooltipContent += `</div>`;
                 });
-                
-                tooltip.transition()
-                    .duration(200)
-                    .style('opacity', .95);
-                
-                // Smart positioning: prefer right side, but switch to left if near edge
-                const tooltipNode = tooltip.node();
-                tooltip.html(tooltipContent);
-                
-                const tooltipWidth = tooltipNode.offsetWidth || 300;
-                const tooltipHeight = tooltipNode.offsetHeight || (allLocationData.length * 100);
-                const windowWidth = window.innerWidth;
-                const windowHeight = window.innerHeight;
-                
-                let left = event.pageX + 40; // More offset to right of cursor
-                let top = event.pageY - tooltipHeight / 2; // Center vertically on cursor
-                
-                // If tooltip would go off right edge, position to left of cursor
-                if (left + tooltipWidth > windowWidth - 20) {
-                    left = event.pageX - tooltipWidth - 40;
-                }
-                
-                // If tooltip would go off top, adjust down
-                if (top < 20) {
-                    top = 20;
-                }
-                
-                // If tooltip would go off bottom, adjust up
-                if (top + tooltipHeight > windowHeight - 20) {
-                    top = windowHeight - tooltipHeight - 20;
-                }
-                
-                tooltip
-                    .style('left', left + 'px')
-                    .style('top', top + 'px');
-            })
-            .on('touchend mouseout', () => {
-                g.selectAll('.hover-dot').remove();
-                tooltip.transition()
-                    .duration(500)
-                    .style('opacity', 0);
-            });
         
-        // Hide loading indicator
-        document.querySelector('.chart-loading').style.display = 'none';
+        // Show tooltip
+        this.tooltip
+            .html(tooltipContent)
+            .style('opacity', 0.95);
         
-        // Render gradient chart
-        this.renderGradientChart(datasets, x, margin, width);
+        // Position tooltip
+        this.positionTooltip(event);
+    },
+    
+    hideTooltip(g) {
+        this.currentHoverPoint = null;
+        
+        // Clear hover dots
+        if (g) {
+            g.selectAll('.hover-dot').remove();
+        }
+        
+        // Hide tooltip
+        if (this.tooltip) {
+            this.tooltip.style('opacity', 0);
+        }
+    },
+    
+    positionTooltip(event) {
+        const tooltip = this.tooltip;
+        const tooltipNode = tooltip.node();
+        const tooltipWidth = tooltipNode.offsetWidth || 300;
+        const tooltipHeight = tooltipNode.offsetHeight || 200;
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+        
+        // Check if mobile
+        const isMobile = window.matchMedia('(max-width: 768px)').matches || 
+                        'ontouchstart' in window;
+        
+        // Get correct coordinates for both mouse and touch events
+        const pageX = event.pageX || event.clientX || (event.touches && event.touches[0].clientX);
+        const pageY = event.pageY || event.clientY || (event.touches && event.touches[0].clientY);
+        
+        if (isMobile) {
+            // Mobile: center horizontally, position above/below touch point
+            const left = Math.max(10, Math.min(windowWidth - tooltipWidth - 10, 
+                                               (windowWidth - tooltipWidth) / 2));
+            let top = pageY - tooltipHeight - 30;
+            
+            // If tooltip would go off top, position below
+            if (top < 10) {
+                top = pageY + 30;
+            }
+            
+            // If still off screen, center vertically
+            if (top + tooltipHeight > windowHeight - 10) {
+                top = (windowHeight - tooltipHeight) / 2;
+            }
+            
+            tooltip
+                .style('left', left + 'px')
+                .style('top', top + 'px');
+        } else {
+            // Desktop: prefer left side of cursor
+            let left = pageX - tooltipWidth - 15;
+            let top = pageY - tooltipHeight / 2;
+            
+            // If tooltip would go off left edge, position to right of cursor
+            if (left < 10) {
+                left = pageX + 15;
+            }
+            
+            // Top edge check
+            if (top < 10) {
+                top = 10;
+            }
+            
+            // Bottom edge check
+            if (top + tooltipHeight > windowHeight - 10) {
+                top = windowHeight - tooltipHeight - 10;
+            }
+            
+            tooltip
+                .style('left', left + 'px')
+                .style('top', top + 'px');
+        }
     },
     
     renderGradientChart(datasets, xScale, parentMargin, parentWidth) {
@@ -811,8 +945,20 @@ const App = {
     },
     
     setupEventListeners() {
+        // Simple resize handler with built-in delay
+        let resizeTimer;
         window.addEventListener('resize', () => {
-            this.calculateAndRenderData();
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                this.calculateAndRenderData();
+            }, 250);
+        });
+        
+        // Handle orientation change
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => {
+                this.calculateAndRenderData();
+            }, 100);
         });
     }
 };

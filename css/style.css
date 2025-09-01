@@ -397,6 +397,9 @@ body {
     overflow: hidden;
     touch-action: pan-x pan-y;
     -webkit-overflow-scrolling: touch;
+    will-change: auto;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
 }
 .gradient-container {
     position: relative;
@@ -411,6 +414,19 @@ body {
     display: block;
     width: 100%;
     height: auto;
+    will-change: auto;
+}
+
+/* Chart overlay for interactions */
+.chart-overlay {
+    pointer-events: all;
+    cursor: crosshair;
+}
+
+/* Hover dots */
+.hover-dot {
+    pointer-events: none;
+    transition: none;
 }
 #gradient-chart {
     display: block;
@@ -562,6 +578,35 @@ body {
     }
 }
 
+/* Mobile-specific tooltip optimizations */
+@media (max-width: 768px) {
+    .chart-tooltip {
+        max-width: calc(100vw - 40px);
+        font-size: 12px;
+        padding: 10px 14px;
+    }
+    
+    .tooltip-location {
+        padding: 6px 0 6px 10px;
+    }
+    
+    .tooltip-monthly {
+        font-size: 11px;
+    }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+    .hover-strip {
+        cursor: default;
+    }
+    
+    .chart-tooltip {
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+        border: 2px solid rgba(255, 255, 255, 0.15);
+    }
+}
+
 /* Ultra-wide desktop (1600px+) */
 @media (min-width: 1600px) {
     .app-container {
@@ -580,7 +625,7 @@ body {
 /* Enhanced Tooltip Styles */
 .chart-tooltip {
     position: fixed;
-    background: rgba(15, 32, 39, 0.95);
+    background: rgba(15, 32, 39, 0.98);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     color: white;
@@ -592,7 +637,9 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     max-width: 320px;
-    transition: transform 0.1s ease-out;
+    transition: opacity 0.15s ease-out;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
 }
 
 .tooltip-date {
