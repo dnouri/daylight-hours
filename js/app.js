@@ -427,7 +427,11 @@ const App = {
     },
     
     formatTime(date, timezoneOffset = 0) {
+        // Handle invalid dates
+        if (!date || isNaN(date)) return 'N/A';
+        
         // Convert to local time using timezone offset
+        // The offset is in hours, convert to milliseconds
         const localDate = new Date(date.getTime() + timezoneOffset * 60 * 60 * 1000);
         const hours = localDate.getUTCHours();
         const minutes = localDate.getUTCMinutes();

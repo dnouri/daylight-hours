@@ -5,6 +5,11 @@ const LocationManager = {
     recentLocations: [],
     
     init() {
+        // Initialize TimezoneManager first
+        if (window.TimezoneManager) {
+            window.TimezoneManager.init();
+        }
+        
         this.loadRecentLocations();
         this.loadActiveLocations();
         this.setupEventListeners();
@@ -15,14 +20,30 @@ const LocationManager = {
         }
     },
     
-    addDefaultLocation() {
-        this.addLocation({
+    async addDefaultLocation() {
+        const location = {
             name: 'New York, NY',
             lat: 40.7128,
             lng: -74.0060,
-            timezoneOffset: -5, // EST
             isPrimary: true
-        }, false); // Don't save to localStorage on initial default
+        };
+        
+        // Get accurate timezone for default location
+        if (window.TimezoneManager) {
+            try {
+                const tzInfo = await window.TimezoneManager.getTimezone(location.lat, location.lng);
+                location.timezoneOffset = tzInfo.offsetHours;
+                location.timezoneName = tzInfo.name;
+                location.timezoneSource = tzInfo.source;
+            } catch (error) {
+                console.error('Failed to get timezone for default location:', error);
+                location.timezoneOffset = -5; // Fallback for NYC
+            }
+        } else {
+            location.timezoneOffset = -5; // Fallback
+        }
+        
+        this.addLocation(location, false); // Don't save to localStorage on initial default
     },
     
     loadActiveLocations() {
@@ -118,15 +139,37 @@ const LocationManager = {
         container.style.display = 'block';
         
         container.querySelectorAll('.search-result-item').forEach(item => {
-            item.addEventListener('click', () => {
+            item.addEventListener('click', async () => {
                 const lat = parseFloat(item.dataset.lat);
                 const lng = parseFloat(item.dataset.lng);
                 const name = item.dataset.name.split(',').slice(0, 2).join(',');
                 
-                // Estimate timezone offset from longitude (rough approximation)
-                const timezoneOffset = Math.round(lng / 15);
+                const locationData = { name, lat, lng };
                 
-                this.addLocation({ name, lat, lng, timezoneOffset });
+                // Show loading indicator
+                item.classList.add('loading');
+                item.style.pointerEvents = 'none';
+                
+                // Get accurate timezone
+                if (window.TimezoneManager) {
+                    try {
+                        const tzInfo = await window.TimezoneManager.getTimezone(lat, lng);
+                        locationData.timezoneOffset = tzInfo.offsetHours;
+                        locationData.timezoneName = tzInfo.name;
+                        locationData.timezoneSource = tzInfo.source;
+                    } catch (error) {
+                        console.error('Failed to get timezone:', error);
+                        // Fallback to longitude-based calculation
+                        locationData.timezoneOffset = Math.round(lng / 15);
+                        locationData.timezoneSource = 'fallback';
+                    }
+                } else {
+                    // Fallback if TimezoneManager not available
+                    locationData.timezoneOffset = Math.round(lng / 15);
+                    locationData.timezoneSource = 'fallback';
+                }
+                
+                this.addLocation(locationData);
                 this.hideSearchResults();
                 document.getElementById('location-search').value = '';
             });
@@ -151,27 +194,41 @@ const LocationManager = {
             async (position) => {
                 const { latitude, longitude } = position.coords;
                 
+                let locationData = {
+                    lat: latitude,
+                    lng: longitude
+                };
+                
+                // Get location name from reverse geocoding
                 try {
                     const response = await fetch(
                         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
                     );
                     const data = await response.json();
                     const name = data.address.city || data.address.town || data.address.village || 'Current Location';
-                    
-                    this.addLocation({
-                        name: `${name}, ${data.address.country}`,
-                        lat: latitude,
-                        lng: longitude,
-                        timezoneOffset: Math.round(longitude / 15)
-                    });
+                    locationData.name = `${name}, ${data.address.country}`;
                 } catch (error) {
-                    this.addLocation({
-                        name: 'Current Location',
-                        lat: latitude,
-                        lng: longitude,
-                        timezoneOffset: Math.round(longitude / 15)
-                    });
+                    locationData.name = 'Current Location';
                 }
+                
+                // Get accurate timezone
+                if (window.TimezoneManager) {
+                    try {
+                        const tzInfo = await window.TimezoneManager.getTimezone(latitude, longitude);
+                        locationData.timezoneOffset = tzInfo.offsetHours;
+                        locationData.timezoneName = tzInfo.name;
+                        locationData.timezoneSource = tzInfo.source;
+                    } catch (error) {
+                        console.error('Failed to get timezone:', error);
+                        locationData.timezoneOffset = Math.round(longitude / 15);
+                        locationData.timezoneSource = 'fallback';
+                    }
+                } else {
+                    locationData.timezoneOffset = Math.round(longitude / 15);
+                    locationData.timezoneSource = 'fallback';
+                }
+                
+                this.addLocation(locationData);
                 
                 btn.disabled = false;
                 btn.textContent = '📍';
@@ -259,11 +316,17 @@ const LocationManager = {
             const bgColor = `rgba(${r}, ${g}, ${b}, 0.2)`;
             const borderColor = `rgba(${r}, ${g}, ${b}, 0.5)`;
             
+            // Add warning icon if using fallback timezone
+            const tzWarning = loc.timezoneSource === 'fallback' ? 
+                '<span class="chip-warning" title="Using approximate timezone">⚠️</span>' : '';
+            
             return `
                 <div class="location-chip ${loc.isPrimary ? 'primary' : ''}" 
                      data-index="${index}"
-                     style="background: ${bgColor}; border-color: ${borderColor};">
+                     style="background: ${bgColor}; border-color: ${borderColor};"
+                     title="${loc.timezoneName || `UTC${loc.timezoneOffset >= 0 ? '+' : ''}${loc.timezoneOffset}`}">
                     <span class="chip-name">${loc.name}</span>
+                    ${tzWarning}
                     ${this.locations.length > 1 ? `<span class="chip-remove" data-index="${index}">×</span>` : ''}
                 </div>
             `;
