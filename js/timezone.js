@@ -20,11 +20,26 @@ const TimezoneManager = {
   /**
    * Initialize the timezone manager
    */
-  init() {
+  async init() {
     // Check if GeoTZ is available
     if (typeof GeoTZ !== 'undefined') {
-      this.isGeoTzLoaded = true;
-      console.log('Timezone: browser-geo-tz loaded successfully');
+      // Test if GeoTZ actually works by making a test call
+      try {
+        // Test with a known location (Greenwich, UK)
+        const testResult = await GeoTZ.find(51.4778, 0.0);
+        if (testResult && testResult.length > 0) {
+          this.isGeoTzLoaded = true;
+        } else {
+          throw new Error('GeoTZ returned empty result');
+        }
+      } catch (error) {
+        console.warn(
+          'Timezone: GeoTZ test failed, will retry on actual requests:',
+          error
+        );
+        // Don't set isGeoTzLoaded to false yet - we'll retry on actual requests
+        this.isGeoTzLoaded = true; // Still try to use it
+      }
     } else {
       console.warn(
         'Timezone: browser-geo-tz not loaded, using longitude-based fallback'
@@ -70,30 +85,48 @@ const TimezoneManager = {
   },
 
   /**
-   * Get timezone using browser-geo-tz library
+   * Get timezone using browser-geo-tz library with retry logic
    * @param {number} lat - Latitude
    * @param {number} lng - Longitude
    * @returns {Promise<Object>} Timezone info
    */
   async getTimezoneFromGeoTz(lat, lng) {
-    // GeoTZ.find returns an array of timezone names
-    const timezones = await GeoTZ.find(lat, lng);
+    let lastError;
 
-    if (!timezones || timezones.length === 0) {
-      throw new Error('No timezone found for coordinates');
+    // Try up to 3 times with exponential backoff
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        // GeoTZ.find returns an array of timezone names
+        const timezones = await GeoTZ.find(lat, lng);
+
+        if (!timezones || timezones.length === 0) {
+          throw new Error('No timezone found for coordinates');
+        }
+
+        // Use the first timezone (most specific)
+        const timezoneName = timezones[0];
+
+        // Calculate current offset for this timezone
+        const offsetHours = this.getTimezoneOffsetHours(timezoneName);
+
+        return {
+          name: timezoneName,
+          offsetHours: offsetHours,
+          source: 'geo-tz',
+        };
+      } catch (error) {
+        lastError = error;
+        console.warn(`Timezone: GeoTZ attempt ${attempt} failed:`, error);
+
+        if (attempt < 3) {
+          // Wait before retry (100ms, 200ms)
+          await new Promise((resolve) => setTimeout(resolve, attempt * 100));
+        }
+      }
     }
 
-    // Use the first timezone (most specific)
-    const timezoneName = timezones[0];
-
-    // Calculate current offset for this timezone
-    const offsetHours = this.getTimezoneOffsetHours(timezoneName);
-
-    return {
-      name: timezoneName,
-      offsetHours: offsetHours,
-      source: 'geo-tz',
-    };
+    // All attempts failed
+    throw lastError;
   },
 
   /**
@@ -121,42 +154,60 @@ const TimezoneManager = {
    */
   getTimezoneOffsetHours(timezoneName) {
     try {
-      // Create dates to compare
+      // Create a reference date
       const now = new Date();
 
-      // Get a date string in the target timezone
-      const tzDateString = now.toLocaleString('en-US', {
+      // Get just the hours in both timezones
+      const tzTimeString = now.toLocaleString('en-US', {
         timeZone: timezoneName,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
-        second: '2-digit',
         hour12: false,
       });
+      const tzHours = parseInt(tzTimeString.split(':')[0]);
 
-      // Get the same instant in UTC
-      const utcDateString = now.toLocaleString('en-US', {
+      const utcTimeString = now.toLocaleString('en-US', {
         timeZone: 'UTC',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
-        second: '2-digit',
         hour12: false,
       });
+      const utcHours = parseInt(utcTimeString.split(':')[0]);
 
-      // Parse both dates
-      const tzDate = new Date(tzDateString);
-      const utcDate = new Date(utcDateString);
+      // Get the dates to check for day boundary
+      const tzDay = parseInt(
+        now.toLocaleString('en-US', {
+          timeZone: timezoneName,
+          day: 'numeric',
+        })
+      );
 
-      // Calculate difference in hours
-      const diffMs = tzDate - utcDate;
-      const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+      const utcDay = parseInt(
+        now.toLocaleString('en-US', {
+          timeZone: 'UTC',
+          day: 'numeric',
+        })
+      );
 
-      return diffHours;
+      // Calculate offset
+      let offset = tzHours - utcHours;
+
+      // Handle day boundary crossing
+      if (tzDay > utcDay) {
+        offset += 24;
+      } else if (tzDay < utcDay) {
+        offset -= 24;
+      }
+
+      // Normalize to standard range
+      if (offset > 14) {
+        offset -= 24;
+      }
+      if (offset < -12) {
+        offset += 24;
+      }
+
+      return offset;
     } catch (error) {
       console.error(
         'Timezone: Error calculating offset for',

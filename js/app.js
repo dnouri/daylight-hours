@@ -10,14 +10,14 @@ const App = {
   selectedDayLine: null,
   bottomSheet: null,
 
-  init() {
+  async init() {
     this.detectMobile();
     this.setupTooltip();
     this.setupBottomSheet();
     this.updateDateDisplay();
     this.setupEventListeners();
     this.loadFromURL();
-    window.LocationManager.init();
+    await window.LocationManager.init();
     window.KeyboardManager.init();
     window.ErrorHandler.init();
   },

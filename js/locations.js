@@ -4,10 +4,10 @@ const LocationManager = {
   searchTimeout: null,
   recentLocations: [],
 
-  init() {
-    // Initialize TimezoneManager first
+  async init() {
+    // Initialize TimezoneManager first and wait for it
     if (window.TimezoneManager) {
-      window.TimezoneManager.init();
+      await window.TimezoneManager.init();
     }
 
     this.loadRecentLocations();
