@@ -5,15 +5,39 @@ const App = {
     tooltip: null,
     currentHoverPoint: null,
     hideTooltipTimer: null,
+    isMobile: false,
+    selectedDayData: null,
+    selectedDayLine: null,
+    bottomSheet: null,
     
     init() {
+        this.detectMobile();
         this.setupTooltip();
+        this.setupBottomSheet();
         this.updateDateDisplay();
         this.setupEventListeners();
         this.loadFromURL();
         window.LocationManager.init();
         window.KeyboardManager.init();
         window.ErrorHandler.init();
+    },
+    
+    detectMobile() {
+        // Detect mobile based on viewport width
+        this.isMobile = window.innerWidth <= 768;
+        
+        // Update on resize
+        window.addEventListener('resize', () => {
+            const wasMobile = this.isMobile;
+            this.isMobile = window.innerWidth <= 768;
+            
+            // Clean up if switching modes
+            if (wasMobile !== this.isMobile) {
+                this.hideTooltip();
+                this.hideBottomSheet();
+                this.clearSelectedDay();
+            }
+        });
     },
     
     setupTooltip() {
@@ -24,6 +48,222 @@ const App = {
                 .style('opacity', 0)
                 .style('pointer-events', 'none');
         }
+    },
+    
+    setupBottomSheet() {
+        this.bottomSheet = document.getElementById('mobile-bottom-sheet');
+        const closeBtn = this.bottomSheet.querySelector('.bottom-sheet-close');
+        const handle = this.bottomSheet.querySelector('.bottom-sheet-handle');
+        
+        // Close button handler
+        closeBtn.addEventListener('click', () => this.hideBottomSheet());
+        
+        // Handle drag to close
+        let startY = 0;
+        let currentY = 0;
+        let isDragging = false;
+        
+        const startDrag = (e) => {
+            isDragging = true;
+            startY = e.touches ? e.touches[0].clientY : e.clientY;
+            this.bottomSheet.style.transition = 'none';
+        };
+        
+        const drag = (e) => {
+            if (!isDragging) return;
+            currentY = e.touches ? e.touches[0].clientY : e.clientY;
+            const deltaY = Math.max(0, currentY - startY);
+            this.bottomSheet.style.transform = `translateY(${deltaY}px)`;
+        };
+        
+        const endDrag = () => {
+            if (!isDragging) return;
+            isDragging = false;
+            this.bottomSheet.style.transition = '';
+            this.bottomSheet.style.transform = '';
+            
+            const deltaY = currentY - startY;
+            if (deltaY > 50) { // Threshold for closing
+                this.hideBottomSheet();
+            }
+        };
+        
+        handle.addEventListener('touchstart', startDrag);
+        handle.addEventListener('touchmove', drag);
+        handle.addEventListener('touchend', endDrag);
+        handle.addEventListener('mousedown', startDrag);
+        document.addEventListener('mousemove', drag);
+        document.addEventListener('mouseup', endDrag);
+        
+        // Tap outside to close
+        this.bottomSheet.addEventListener('click', (e) => {
+            if (e.target === this.bottomSheet) {
+                this.hideBottomSheet();
+            }
+        });
+    },
+    
+    showBottomSheet(dataPoint, allLocationData) {
+        if (!this.isMobile) return;
+        
+        // Add class to body for split view
+        document.body.classList.add('sheet-open');
+        
+        this.bottomSheet.classList.add('visible');
+        setTimeout(() => {
+            this.bottomSheet.classList.add('active');
+            
+            // Ensure the selected point on the chart is visible above the sheet
+            this.ensureChartVisible();
+        }, 10);
+        
+        // Update content
+        const dateEl = this.bottomSheet.querySelector('.bottom-sheet-date');
+        const locationsEl = this.bottomSheet.querySelector('.bottom-sheet-locations');
+        
+        dateEl.textContent = this.formatDateShort(dataPoint.date);
+        
+        // Build location details
+        let locationsHTML = '';
+        allLocationData.forEach(item => {
+            const isPrimary = item.location.isPrimary;
+            const offset = item.location.timezoneOffset || 0;
+            
+            locationsHTML += `
+                <div class="bottom-sheet-location">
+                    <div class="bottom-sheet-location-name" style="border-left-color: ${item.color}">
+                        ${item.location.name.split(',')[0]}
+                    </div>
+                    <div class="bottom-sheet-location-info">
+                        <div class="bottom-sheet-stat">
+                            <span class="bottom-sheet-stat-label">Sunrise</span>
+                            <span class="bottom-sheet-stat-value">
+                                ${item.data.sunrise ? this.formatTime(item.data.sunrise, offset) : 'N/A'}
+                            </span>
+                        </div>
+                        <div class="bottom-sheet-stat">
+                            <span class="bottom-sheet-stat-label">Sunset</span>
+                            <span class="bottom-sheet-stat-value">
+                                ${item.data.sunset ? this.formatTime(item.data.sunset, offset) : 'N/A'}
+                            </span>
+                        </div>
+                        <div class="bottom-sheet-stat">
+                            <span class="bottom-sheet-stat-label">Daylight</span>
+                            <span class="bottom-sheet-stat-value">
+                                ${this.formatDuration(item.data.daylight)}
+                            </span>
+                        </div>
+                        <div class="bottom-sheet-stat">
+                            <span class="bottom-sheet-stat-label">Solar Noon</span>
+                            <span class="bottom-sheet-stat-value">
+                                ${this.formatTime(item.data.solarNoon, offset)} (${item.data.maxAltitude.toFixed(1)}°)
+                            </span>
+                        </div>
+                        <div class="bottom-sheet-stat">
+                            <span class="bottom-sheet-stat-label">Sun at 9am</span>
+                            <span class="bottom-sheet-stat-value">
+                                ${item.data.altitude9am.toFixed(1)}°
+                            </span>
+                        </div>
+                        <div class="bottom-sheet-stat">
+                            <span class="bottom-sheet-stat-label">Sun at 3pm</span>
+                            <span class="bottom-sheet-stat-value">
+                                ${item.data.altitude3pm.toFixed(1)}°
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        locationsEl.innerHTML = locationsHTML;
+    },
+    
+    hideBottomSheet() {
+        if (!this.bottomSheet) return;
+        
+        // Remove sheet-open class from body
+        document.body.classList.remove('sheet-open');
+        
+        this.bottomSheet.classList.remove('active');
+        setTimeout(() => {
+            this.bottomSheet.classList.remove('visible');
+        }, 300);
+        
+        this.clearSelectedDay();
+    },
+    
+    clearSelectedDay() {
+        // Remove selected day line from charts
+        if (this.selectedDayLine) {
+            d3.selectAll('.selected-day-line').remove();
+            this.selectedDayLine = null;
+        }
+        this.selectedDayData = null;
+    },
+    
+    ensureChartVisible() {
+        // Calculate positions
+        const sheetHeight = Math.min(280, window.innerHeight * 0.4);
+        const viewportHeight = window.innerHeight;
+        const chartsContainer = document.querySelector('.charts-wrapper');
+        
+        if (!chartsContainer) return;
+        
+        const chartsRect = chartsContainer.getBoundingClientRect();
+        const chartBottom = chartsRect.bottom;
+        const availableSpace = viewportHeight - sheetHeight;
+        
+        // If the chart extends below where the sheet will be, scroll up
+        if (chartBottom > availableSpace) {
+            // Calculate how much to scroll
+            // We want the chart container to be fully visible above the sheet
+            const targetTop = Math.max(0, chartsRect.top - (chartBottom - availableSpace) - 20);
+            
+            window.scrollTo({
+                top: window.scrollY + targetTop,
+                behavior: 'smooth'
+            });
+        }
+        
+        // If the chart is above the viewport after focusing on selected day, scroll down
+        if (chartsRect.top < 0) {
+            window.scrollTo({
+                top: window.scrollY + chartsRect.top - 20,
+                behavior: 'smooth'
+            });
+        }
+    },
+    
+    showSelectedDayLine(dataPoint, datasets, xScale, g) {
+        // Clear existing selected day line
+        this.clearSelectedDay();
+        
+        // Add selected day line to daylight chart
+        const chartHeight = g.node().getBBox().height;
+        this.selectedDayLine = g.append('line')
+            .attr('class', 'selected-day-line')
+            .attr('x1', xScale(dataPoint.date))
+            .attr('x2', xScale(dataPoint.date))
+            .attr('y1', 0)
+            .attr('y2', chartHeight);
+        
+        // Also add to altitude chart if it exists
+        const altitudeChart = d3.select('#altitude-chart');
+        if (!altitudeChart.empty()) {
+            const altitudeSvg = altitudeChart.select('g');
+            if (!altitudeSvg.empty()) {
+                const altitudeHeight = altitudeSvg.node().getBBox().height;
+                altitudeSvg.append('line')
+                    .attr('class', 'selected-day-line')
+                    .attr('x1', xScale(dataPoint.date))
+                    .attr('x2', xScale(dataPoint.date))
+                    .attr('y1', 0)
+                    .attr('y2', altitudeHeight);
+            }
+        }
+        
+        this.selectedDayData = dataPoint;
     },
     
     loadFromURL() {
@@ -201,6 +441,14 @@ const App = {
         const m = Math.round((hours - h) * 60);
         return `${h}h ${m}m`;
     },
+    
+    formatDateShort(date) {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+    },
+    
+    formatDateCompact: d3.timeFormat('%b %d'),
     
     renderSunPath(today, timezoneOffset, location) {
         const svg = d3.select('#sun-path-mini');
@@ -747,6 +995,9 @@ const App = {
         
         // Handle showing the tooltip
         const handleInteraction = function(event) {
+            // Skip mouse events on mobile
+            if (self.isMobile && event.type.startsWith('mouse')) return;
+            
             const [mouseX, mouseY] = d3.pointer(event, this);
             
             // Find nearest data point
@@ -763,8 +1014,10 @@ const App = {
                 self.hideTooltipTimer = null;
             }
             
-            // Update tooltip
-            self.updateTooltip(nearestPoint, datasets, xScale, yScale, g, event);
+            // Update tooltip (desktop only)
+            if (!self.isMobile) {
+                self.updateTooltip(nearestPoint, datasets, xScale, yScale, g, event);
+            }
         };
         
         // Handle hiding the tooltip
@@ -781,7 +1034,7 @@ const App = {
             .on('mouseenter', handleInteraction)
             .on('mouseleave', handleLeave);
         
-        // Touch events
+        // Touch events (mobile)
         overlay
             .on('touchstart', function(event) {
                 event.preventDefault();
@@ -791,11 +1044,35 @@ const App = {
                 const nearestPoint = findNearestPoint(touchX);
                 if (nearestPoint) {
                     self.currentHoverPoint = nearestPoint;
-                    self.updateTooltip(nearestPoint, datasets, xScale, yScale, g, touch);
+                    
+                    if (self.isMobile) {
+                        // Show selected day line
+                        self.showSelectedDayLine(nearestPoint, datasets, xScale, g);
+                        
+                        // Get data for all locations
+                        const allLocationData = datasets.map((dataset, idx) => {
+                            const point = dataset.data.find(p => 
+                                self.isSameDay(p.date, nearestPoint.date)
+                            );
+                            return {
+                                location: dataset.location,
+                                data: point,
+                                color: self.locationColors[idx % self.locationColors.length]
+                            };
+                        }).filter(item => item.data);
+                        
+                        // Show bottom sheet
+                        self.showBottomSheet(nearestPoint, allLocationData);
+                    } else {
+                        self.updateTooltip(nearestPoint, datasets, xScale, yScale, g, touch);
+                    }
                 }
             })
             .on('touchmove', function(event) {
                 event.preventDefault();
+                // On mobile, don't update on move - require tap
+                if (self.isMobile) return;
+                
                 const touch = event.touches[0];
                 const [touchX] = d3.pointer(touch, this);
                 
@@ -807,18 +1084,18 @@ const App = {
             })
             .on('touchend', function(event) {
                 event.preventDefault();
-                // Keep tooltip visible longer on mobile
-                self.hideTooltipTimer = setTimeout(() => {
-                    self.hideTooltip(g);
-                }, 2000);
+                // On desktop tablets with touch, hide tooltip after delay
+                if (!self.isMobile) {
+                    self.hideTooltipTimer = setTimeout(() => {
+                        self.hideTooltip(g);
+                    }, 2000);
+                }
             });
     },
     
     updateTooltip(dataPoint, datasets, xScale, yScale, g, event) {
         // Clear existing hover dots
         g.selectAll('.hover-dot').remove();
-        
-        const formatDateShort = d3.timeFormat('%b %d');
         
         // Get data for this date from all datasets
         const allLocationData = datasets.map((dataset, idx) => {
@@ -867,7 +1144,7 @@ const App = {
         });
         
         // Build tooltip content for all locations
-        let tooltipContent = `<div class="tooltip-date">${formatDateShort(dataPoint.date)}</div>`;
+        let tooltipContent = `<div class="tooltip-date">${this.formatDateCompact(dataPoint.date)}</div>`;
                 
                 allLocationData.forEach(item => {
                     const changeClass = item.data.change > 0 ? 'positive' : 'negative';

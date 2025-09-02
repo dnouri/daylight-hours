@@ -603,29 +603,8 @@ body {
     }
 }
 
-/* Mobile-specific tooltip optimizations */
-@media (max-width: 768px) {
-    .chart-tooltip {
-        max-width: calc(100vw - 40px);
-        font-size: 12px;
-        padding: 10px 14px;
-    }
-    
-    .tooltip-location {
-        padding: 6px 0 6px 10px;
-    }
-    
-    .tooltip-monthly {
-        font-size: 11px;
-    }
-}
-
-/* Touch device optimizations */
-@media (hover: none) and (pointer: coarse) {
-    .hover-strip {
-        cursor: default;
-    }
-    
+/* Touch device optimizations for tablets */
+@media (hover: none) and (pointer: coarse) and (min-width: 769px) {
     .chart-tooltip {
         box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
         border: 2px solid rgba(255, 255, 255, 0.15);
@@ -647,7 +626,168 @@ body {
     }
 }
 
-/* Enhanced Tooltip Styles */
+/* Mobile Bottom Sheet */
+.bottom-sheet {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(to bottom, rgba(15, 32, 39, 0.98), rgba(32, 58, 67, 0.98));
+    border-radius: 20px 20px 0 0;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1000;
+    display: none;
+    height: min(280px, 40vh); /* Responsive height, max 40% of viewport */
+    overflow: hidden;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.bottom-sheet.visible {
+    display: block;
+}
+
+.bottom-sheet.active {
+    transform: translateY(0);
+}
+
+.bottom-sheet-handle {
+    width: 40px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 2px;
+    margin: 12px auto 8px;
+    cursor: grab;
+}
+
+.bottom-sheet-content {
+    padding: 0 20px 20px;
+    overflow-y: auto;
+    max-height: calc(280px - 44px); /* Account for handle and padding */
+}
+
+.bottom-sheet-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    margin-bottom: 16px;
+}
+
+.bottom-sheet-date {
+    font-size: 18px;
+    font-weight: 300;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.bottom-sheet-close {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 28px;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.2s;
+}
+
+.bottom-sheet-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.bottom-sheet-location {
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.bottom-sheet-location:last-child {
+    border-bottom: none;
+}
+
+.bottom-sheet-location-name {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    padding-left: 12px;
+    border-left: 3px solid transparent;
+}
+
+.bottom-sheet-location-info {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 8px;
+}
+
+.bottom-sheet-stat {
+    display: flex;
+    flex-direction: column;
+}
+
+.bottom-sheet-stat-label {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+}
+
+.bottom-sheet-stat-value {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+/* Selected day indicator line */
+.selected-day-line {
+    stroke: #00BCD4;
+    stroke-width: 2;
+    stroke-dasharray: none;
+    opacity: 0.8;
+}
+
+/* Responsive Display Control */
+@media (min-width: 769px) {
+    /* Desktop: Hide bottom sheet */
+    .bottom-sheet {
+        display: none !important;
+    }
+}
+
+@media (max-width: 768px) {
+    /* Mobile: Hide tooltip, show bottom sheet */
+    .chart-tooltip {
+        display: none !important;
+    }
+    
+    .bottom-sheet.visible {
+        display: block;
+    }
+    
+    /* CSS Variables for consistent sizing */
+    :root {
+        --sheet-height: min(280px, 40vh);
+    }
+    
+    /* Split View: Keep page structure intact */
+    .bottom-sheet {
+        /* Sheet stays at bottom, content scrolls */
+    }
+    
+    /* Optional: Add padding to bottom when sheet is open */
+    .sheet-open .app-container {
+        padding-bottom: var(--sheet-height);
+    }
+}
+
+/* Tooltip Styles (Desktop Only) */
 .chart-tooltip {
     position: fixed;
     background: rgba(15, 32, 39, 0.98);
