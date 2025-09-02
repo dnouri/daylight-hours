@@ -12,7 +12,9 @@ See how daylight changes throughout the year for any location on Earth. Explore 
 
 **Compare multiple locations** simultaneously to understand how daylight varies across different latitudes - perfect for exploring how seasons differ around the world.
 
-**Rate of change graph** reveals when daylight hours are changing most rapidly and when you're approaching the solstices.
+**Solar noon tracking** shows when the sun reaches its highest point each day and its maximum altitude, revealing how solar noon shifts throughout the year.
+
+**30-day outlook** indicates whether your days are getting longer or shorter and by how much, helping you anticipate upcoming daylight changes.
 
 **Local time display** automatically adjusts sunrise and sunset times to each location's timezone, showing you the actual times you'd experience there.
 
