@@ -1,103 +1,115 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="description" content="Visualize daylight hours throughout the year for any location">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <meta
+      name="description"
+      content="Visualize daylight hours throughout the year for any location"
+    />
     <title>Daylight Hours</title>
-    <link rel="stylesheet" href="css/style.css">
-</head>
-<body>
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
     <div class="app-container">
-        <header class="app-header">
-            <h1>Daylight Hours</h1>
-            <div class="location-controls">
-                <div class="search-container">
-                    <input type="text" 
-                           id="location-search" 
-                           class="location-search" 
-                           placeholder="Search for a location..."
-                           autocomplete="off">
-                    <button id="use-my-location" class="btn-location" title="Use my location">
-                        📍
-                    </button>
-                    <div id="search-results" class="search-results"></div>
-                </div>
-                <div id="location-chips" class="location-chips"></div>
-                <div id="recent-locations" class="recent-locations"></div>
+      <header class="app-header">
+        <h1>Daylight Hours</h1>
+        <div class="location-controls">
+          <div class="search-container">
+            <input
+              type="text"
+              id="location-search"
+              class="location-search"
+              placeholder="Search for a location..."
+              autocomplete="off"
+            />
+            <button
+              id="use-my-location"
+              class="btn-location"
+              title="Use my location"
+            >
+              📍
+            </button>
+            <div id="search-results" class="search-results"></div>
+          </div>
+          <div id="location-chips" class="location-chips"></div>
+          <div id="recent-locations" class="recent-locations"></div>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <div class="stats-card">
+          <div class="location-header" id="location-header">
+            <span class="location-name" id="stats-location-name">-</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Today</span>
+            <span class="stat-value" id="today-date">-</span>
+          </div>
+          <div class="stat-row">
+            <div class="stat-item">
+              <span class="stat-label">Sunrise</span>
+              <span class="stat-value" id="sunrise-time">-</span>
             </div>
-        </header>
-        
-        <main class="main-content">
-            <div class="stats-card">
-                <div class="location-header" id="location-header">
-                    <span class="location-name" id="stats-location-name">-</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Today</span>
-                    <span class="stat-value" id="today-date">-</span>
-                </div>
-                <div class="stat-row">
-                    <div class="stat-item">
-                        <span class="stat-label">Sunrise</span>
-                        <span class="stat-value" id="sunrise-time">-</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Sunset</span>
-                        <span class="stat-value" id="sunset-time">-</span>
-                    </div>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Daylight</span>
-                    <span class="stat-value" id="daylight-hours">-</span>
-                    <span class="stat-change" id="daylight-change">-</span>
-                </div>
-                <div class="solar-noon-section">
-                    <div class="stat-item">
-                        <span class="stat-label">Solar Noon</span>
-                        <span class="stat-value" id="solar-noon-time">-</span>
-                        <span class="stat-altitude" id="solar-noon-altitude">-</span>
-                    </div>
-                    <div class="sun-path-viz" id="sun-path-viz">
-                        <svg id="sun-path-mini" width="200" height="80"></svg>
-                    </div>
-                </div>
-                <div class="stat-forecast">
-                    <span class="forecast-label">30-Day Outlook</span>
-                    <div class="forecast-value" id="monthly-forecast">
-                        <span class="forecast-icon">-</span>
-                        <span class="forecast-text">-</span>
-                    </div>
-                </div>
+            <div class="stat-item">
+              <span class="stat-label">Sunset</span>
+              <span class="stat-value" id="sunset-time">-</span>
             </div>
-            
-            <div class="charts-wrapper">
-                <div class="chart-container" id="chart-container">
-                    <svg id="daylight-chart"></svg>
-                    <div class="chart-loading">Loading...</div>
-                </div>
-                
-                <div class="altitude-container" id="altitude-container">
-                    <svg id="altitude-chart"></svg>
-                </div>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Daylight</span>
+            <span class="stat-value" id="daylight-hours">-</span>
+            <span class="stat-change" id="daylight-change">-</span>
+          </div>
+          <div class="solar-noon-section">
+            <div class="stat-item">
+              <span class="stat-label">Solar Noon</span>
+              <span class="stat-value" id="solar-noon-time">-</span>
+              <span class="stat-altitude" id="solar-noon-altitude">-</span>
             </div>
-        </main>
+            <div class="sun-path-viz" id="sun-path-viz">
+              <svg id="sun-path-mini" width="200" height="80"></svg>
+            </div>
+          </div>
+          <div class="stat-forecast">
+            <span class="forecast-label">30-Day Outlook</span>
+            <div class="forecast-value" id="monthly-forecast">
+              <span class="forecast-icon">-</span>
+              <span class="forecast-text">-</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="charts-wrapper">
+          <div class="chart-container" id="chart-container">
+            <svg id="daylight-chart"></svg>
+            <div class="chart-loading">Loading...</div>
+          </div>
+
+          <div class="altitude-container" id="altitude-container">
+            <svg id="altitude-chart"></svg>
+          </div>
+        </div>
+      </main>
     </div>
-    
+
     <!-- Mobile Bottom Sheet -->
     <div id="mobile-bottom-sheet" class="bottom-sheet">
-        <div class="bottom-sheet-handle"></div>
-        <div class="bottom-sheet-content">
-            <div class="bottom-sheet-header">
-                <span class="bottom-sheet-date">-</span>
-                <button class="bottom-sheet-close" aria-label="Close">×</button>
-            </div>
-            <div class="bottom-sheet-body">
-                <div class="bottom-sheet-locations"></div>
-            </div>
+      <div class="bottom-sheet-handle"></div>
+      <div class="bottom-sheet-content">
+        <div class="bottom-sheet-header">
+          <span class="bottom-sheet-date">-</span>
+          <button class="bottom-sheet-close" aria-label="Close">×</button>
         </div>
+        <div class="bottom-sheet-body">
+          <div class="bottom-sheet-locations"></div>
+        </div>
+      </div>
     </div>
-    
+
     <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.min.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://unpkg.com/browser-geo-tz@latest/dist/geotz.js"></script>
@@ -106,5 +118,5 @@
     <script src="js/keyboard.js"></script>
     <script src="js/errors.js"></script>
     <script src="js/app.js"></script>
-</body>
+  </body>
 </html>
