@@ -123,9 +123,14 @@ const App = {
         
         dateEl.textContent = this.formatDateShort(dataPoint.date);
         
+        // On mobile, only show the primary location (the one selected)
+        // This matches the desktop behavior where stats card shows primary location
+        const primaryLocation = allLocationData.find(item => item.location.isPrimary);
+        const dataToShow = primaryLocation ? [primaryLocation] : allLocationData;
+        
         // Build location details
         let locationsHTML = '';
-        allLocationData.forEach(item => {
+        dataToShow.forEach(item => {
             const isPrimary = item.location.isPrimary;
             const offset = item.location.timezoneOffset || 0;
             
@@ -1425,6 +1430,24 @@ const App = {
         const primaryDataset = datasets.find(d => d.location.isPrimary) || datasets[0];
         this.updateTodayStats(primaryDataset.data, primaryDataset.location);
         this.renderChart(datasets);
+        
+        // If bottom sheet is open on mobile, update it with new primary location
+        if (this.isMobile && this.selectedDayData && this.bottomSheet && 
+            this.bottomSheet.classList.contains('active')) {
+            // Re-show bottom sheet with updated data
+            const allLocationData = datasets.map((dataset, idx) => {
+                const point = dataset.data.find(p => 
+                    this.isSameDay(p.date, this.selectedDayData.date)
+                );
+                return {
+                    location: dataset.location,
+                    data: point,
+                    color: this.locationColors[idx % this.locationColors.length]
+                };
+            }).filter(item => item.data);
+            
+            this.showBottomSheet(this.selectedDayData, allLocationData);
+        }
     },
     
     clearChart() {
